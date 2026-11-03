@@ -1,0 +1,14 @@
+# 归档目录（旧版本 / 临时脚本，不进版本库）
+_archive/
+
+# 截图与临时产物
+.screenshots/
+*.tmp
+*.broken
+*.broken2
+
+# 依赖与系统文件
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
