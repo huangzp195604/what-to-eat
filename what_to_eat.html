@@ -533,7 +533,7 @@
     </section>
 
     <!-- Radar Info & Filter Toolbar -->
-    <section id="toolbarSection" class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#f5efe2] p-3 rounded-lg border border-[#ded5c2] shadow-sm">
+    <section id="toolbarSection" class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3 bg-[#f5efe2] p-3 rounded-lg border border-[#ded5c2] shadow-sm">
       <div class="flex items-center gap-2 flex-wrap">
         <span class="seal-stamp text-xs py-0.5 px-1.5 bg-white">食肆雷达</span>
         <span class="text-xs sm:text-sm text-[#4d4036]">
@@ -568,6 +568,20 @@
           <option value="rating">评分最高 (星级)</option>
           <option value="price_asc">人均亲民 (价格升序)</option>
         </select>
+      </div>
+
+      <!-- 抽签偏好：只在本地生效，不上传任何数据 -->
+      <div class="w-full flex items-center gap-2 flex-wrap pt-2.5 border-t border-dashed border-[#ded5c2]">
+        <span class="text-[11px] text-[#8a7b6b] tracking-wide">抽签偏好</span>
+        <label for="openOnlyToggle" class="cursor-pointer select-none inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-white border border-[#c7baa7] text-[#4d4036] hover:border-[#9e2a2b] transition">
+          <input type="checkbox" id="openOnlyToggle" class="w-3 h-3 accent-[#9e2a2b] cursor-pointer">
+          <span>只看此刻营业中</span>
+        </label>
+        <label for="repeatToggle" class="cursor-pointer select-none inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-white border border-[#c7baa7] text-[#4d4036] hover:border-[#9e2a2b] transition">
+          <input type="checkbox" id="repeatToggle" class="w-3 h-3 accent-[#9e2a2b] cursor-pointer">
+          <span>避开近七天吃过的</span>
+        </label>
+        <span class="text-[10px] text-[#a2937f] ml-auto">设置只存在这台设备</span>
       </div>
     </section>
 
@@ -1469,7 +1483,10 @@
       status: "normal", // "normal", "loading", "empty", "error"
       cuisineFilter: "all",
       sortBy: "distance",
-      isRolling: false
+      isRolling: false,
+      openOnly: false,      // 只看此刻营业中的食肆
+      avoidRepeat: false,   // 抽签避开近七天中签过的店
+      emptyReason: "cuisine" // "cuisine" | "open"：空列表是因菜系还是因营业状态
     };
 
     // DOM Elements
@@ -1494,6 +1511,8 @@
     }
     const cuisineFilter = document.getElementById("cuisineFilter");
     const sortSelect = document.getElementById("sortSelect");
+    const openOnlyToggle = document.getElementById("openOnlyToggle");
+    const repeatToggle = document.getElementById("repeatToggle");
 
     const loadingState = document.getElementById("loadingState");
     const emptyState = document.getElementById("emptyState");
@@ -1587,6 +1606,109 @@
       }
     }
 
+    // ==========================================
+    // 5b. 本地记忆（地址 / 筛选 / 近七天中签）
+    //     只用 localStorage，不上传任何数据
+    // ==========================================
+    const LS_PREFS = "zhiwei_prefs_v1";
+    const LS_RECENT = "zhiwei_recent_wins_v1";
+    const RECENT_KEEP_DAYS = 7;
+    const RECENT_MAX = 40;
+
+    function lsGet(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+    function lsSet(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) { /* 隐私模式下静默失败 */ }
+    }
+    function loadPrefs() {
+      try {
+        const obj = JSON.parse(lsGet(LS_PREFS) || "{}");
+        return obj && typeof obj === "object" ? obj : {};
+      } catch (e) { return {}; }
+    }
+    function savePrefs(patch) {
+      lsSet(LS_PREFS, JSON.stringify(Object.assign(loadPrefs(), patch)));
+    }
+
+    function loadRecentWins() {
+      let arr = [];
+      try {
+        const parsed = JSON.parse(lsGet(LS_RECENT) || "[]");
+        if (Array.isArray(parsed)) arr = parsed;
+      } catch (e) { arr = []; }
+      const cutoff = Date.now() - RECENT_KEEP_DAYS * 24 * 60 * 60 * 1000;
+      return arr.filter(x => x && x.id && typeof x.at === "number" && x.at >= cutoff);
+    }
+    function rememberWin(resto) {
+      const list = loadRecentWins().filter(x => String(x.id) !== String(resto.id));
+      list.push({ id: resto.id, name: resto.name, at: Date.now() });
+      lsSet(LS_RECENT, JSON.stringify(list.slice(-RECENT_MAX)));
+    }
+
+    // ==========================================
+    // 5c. 营业时间判定
+    //     高德 opentime2 形如「周一至周五 07:00-18:00；周六至周日 09:00-20:00」
+    //     返回 true / false / null（解析不出来时返回 null，调用方一律放行）
+    // ==========================================
+    const DAY_MAP = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "日": 0, "天": 0 };
+
+    function isOpenAt(hoursText, now) {
+      const raw = String(hoursText || "").trim();
+      if (!raw || /未知|暂无|不详|未知晓/.test(raw)) return null;
+      if (/24\s*小时|全天|24h/i.test(raw)) return true;
+
+      const text = raw.replace(/：/g, ":").replace(/[—–~～－]/g, "-").replace(/\s+/g, " ");
+      const nowDate = now || new Date();
+      const today = nowDate.getDay();
+      const minutesNow = nowDate.getHours() * 60 + nowDate.getMinutes();
+
+      let parsedAny = false;
+      const segments = text.split(/[;；，,、|\n]/);
+
+      for (const seg of segments) {
+        const ranges = [];
+        const re = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/g;
+        let m;
+        while ((m = re.exec(seg)) !== null) {
+          ranges.push([
+            parseInt(m[1], 10) * 60 + parseInt(m[2], 10),
+            parseInt(m[3], 10) * 60 + parseInt(m[4], 10)
+          ]);
+        }
+        if (ranges.length === 0) continue; // 只有「周一休息」这类备注，跳过
+        parsedAny = true;
+
+        // 这一段的星期范围；取不到就当每天适用
+        let days = null;
+        const rangeMatch = seg.match(/(?:周|星期|礼拜)\s*([一二三四五六日天])\s*(?:至|-|到)\s*(?:周|星期|礼拜)?\s*([一二三四五六日天])/);
+        if (rangeMatch) {
+          const from = DAY_MAP[rangeMatch[1]];
+          const to = DAY_MAP[rangeMatch[2]];
+          days = new Set();
+          let d = from;
+          for (let i = 0; i < 7; i++) {
+            days.add(d);
+            if (d === to) break;
+            d = (d + 1) % 7;
+          }
+        } else {
+          const singleMatch = seg.match(/(?:周|星期|礼拜)\s*([一二三四五六日天])/);
+          if (singleMatch) days = new Set([DAY_MAP[singleMatch[1]]]);
+        }
+
+        if (days && !days.has(today)) continue;
+
+        for (const [start, end] of ranges) {
+          const realEnd = end <= start ? end + 1440 : end;      // 跨零点，如 11:00-02:00
+          const t = minutesNow < start ? minutesNow + 1440 : minutesNow;
+          if (t >= start && t <= realEnd) return true;
+        }
+      }
+
+      return parsedAny ? false : null;
+    }
+
     function applyFiltersAndSort() {
       let list = [...state.allRestaurants];
 
@@ -1594,6 +1716,13 @@
       if (state.cuisineFilter !== "all") {
         list = list.filter(item => item.cuisine.includes(state.cuisineFilter));
       }
+
+      // 营业状态过滤：isOpenAt 返回 null（时间未知）时保留，避免把店藏了
+      const afterCuisine = list.length;
+      if (state.openOnly) {
+        list = list.filter(item => isOpenAt(item.hours) !== false);
+      }
+      state.emptyReason = (list.length === 0 && afterCuisine > 0 && state.openOnly) ? "open" : "cuisine";
 
       // Sort
       if (state.sortBy === "distance") {
@@ -1615,11 +1744,14 @@
       randomPoolCount.textContent = state.filteredRestaurants.length;
 
       if (state.filteredRestaurants.length === 0) {
+        const byOpen = state.emptyReason === "open";
         restaurantGrid.innerHTML = `
           <div class="col-span-full py-12 text-center text-[#7a6b5a] bg-[#f8f5eb] rounded-lg border border-[#e0d6c2]">
-            <div class="text-3xl mb-2">🥢</div>
-            <p class="font-bold">该菜系分类下未寻得 500 米内食肆</p>
-            <p class="text-xs text-[#9c8e7e] mt-1">请尝试切换为“所有菜系分类”查看全量结果</p>
+            <div class="text-3xl mb-2">${byOpen ? "🌙" : "🥢"}</div>
+            <p class="font-bold">${byOpen ? "这个时段附近没有正在营业的食肆" : "该筛选条件下未寻得食肆"}</p>
+            <p class="text-xs text-[#9c8e7e] mt-1">${byOpen
+              ? "可以关掉「只看此刻营业中」，或换个菜系、放宽半径再看看"
+              : "请尝试切换为「所有菜系分类」或放宽搜索半径"}</p>
           </div>
         `;
         return;
@@ -1649,6 +1781,14 @@
         if (resto.cuisine.includes("川湘")) cuisineBadgeClass = "bg-[#fae6e6] text-[#9e2a2b] border border-[#f5b8b8]";
         else if (resto.cuisine.includes("粤")) cuisineBadgeClass = "bg-[#e5f0ea] text-[#2e6b65] border border-[#b2d9c7]";
         else if (resto.cuisine.includes("火锅")) cuisineBadgeClass = "bg-[#faedd9] text-[#b85c14] border border-[#f5d2a8]";
+
+        // 营业状态标记：解析不出来（时间未知）就不标记，不猜
+        const openNow = isOpenAt(resto.hours);
+        const openBadge = openNow === false
+          ? `<span class="text-[11px] bg-[#efe9df] text-[#8a7b6b] px-1.5 py-0.5 rounded border border-[#ded5c2]" title="按营业时间判断，此刻可能已打烊">已打烊</span>`
+          : openNow === true
+            ? `<span class="text-[11px] bg-[#e8f2ef] text-[#2e6b65] px-1.5 py-0.5 rounded border border-[#b2d9c7]">营业中</span>`
+            : "";
 
         card.innerHTML = `
           <!-- 客栈烟火背景：满座客人、店小二忙活、掌柜拨算盘（纯装饰） -->
@@ -1762,6 +1902,7 @@
                 <span class="text-[11px] flex items-center gap-0.5 text-[#c59b27] font-bold bg-[#fdf8ec] px-1.5 py-0.5 rounded border border-[#fae8b8]">
                   ★ ${resto.rating.toFixed(1)}
                 </span>` : ''}
+                ${openBadge}
                 <span class="text-xs font-semibold text-[#8a7660]">
                   ${resto.price}
                 </span>
@@ -2082,6 +2223,9 @@
       currentCenterLabel.textContent = trimmed;
       mobileCenterSummary.textContent = trimmed;
 
+      // 记住这次用的地址与半径，下次打开直接复用
+      savePrefs({ address: trimmed, radius: getCurrentRadius() });
+
       setViewState("loading");
       playBambooSound();
 
@@ -2141,9 +2285,28 @@
       bambooShakeIcon.classList.add("animate-shake");
 
       initAudio();
-      showToast("灵签摇动中，且待天意...", "🎋");
 
-      const pool = state.filteredRestaurants;
+      // 抽签池：可选地剔除近七天中签过的店
+      let pool = state.filteredRestaurants;
+      let avoidedCount = 0;
+      if (state.avoidRepeat) {
+        const recent = new Set(loadRecentWins().map(x => String(x.id)));
+        if (recent.size > 0) {
+          const fresh = state.filteredRestaurants.filter(r => !recent.has(String(r.id)));
+          // 剔完只剩个位数就不硬剔了，否则来回就那两三家，抽签失去意义
+          if (fresh.length >= 5) {
+            avoidedCount = state.filteredRestaurants.length - fresh.length;
+            pool = fresh;
+          }
+        }
+      }
+      showToast(
+        avoidedCount > 0
+          ? `灵签摇动中，且待天意…（已避开近七天吃过的 ${avoidedCount} 家）`
+          : "灵签摇动中，且待天意...",
+        "🎋"
+      );
+
       const totalSteps = 16 + Math.floor(Math.random() * 8); // 16 to 24 roulette hops
       let currentStep = 0;
       let currentIndex = 0;
@@ -2204,6 +2367,7 @@
 
     function revealWinner(winner, openModal = true) {
       state.selectedRestaurant = winner;
+      rememberWin(winner); // 记进「近七天吃过」，供下次抽签避开
       playChimeSound();
 
       // 1. Highlight in list
@@ -2391,6 +2555,7 @@
         const r = getCurrentRadius();
         const rStr = formatRadius(r);
         radiusLabel.textContent = `· ${rStr} 圈`;
+        savePrefs({ radius: r });
         showToast(`📍 搜索半径调整为 ${rStr}`, "🎯");
         if (state.currentAddress && isAmapAvailable()) {
           performSearch(state.currentAddress);
@@ -2549,13 +2714,38 @@
     // Cuisine filter
     cuisineFilter.addEventListener("change", (e) => {
       state.cuisineFilter = e.target.value;
+      savePrefs({ cuisine: state.cuisineFilter });
       applyFiltersAndSort();
     });
 
     // Sort select
     sortSelect.addEventListener("change", (e) => {
       state.sortBy = e.target.value;
+      savePrefs({ sort: state.sortBy });
       applyFiltersAndSort();
+    });
+
+    // 抽签偏好开关（只存本地）
+    openOnlyToggle.addEventListener("change", (e) => {
+      state.openOnly = e.target.checked;
+      savePrefs({ openOnly: state.openOnly });
+      applyFiltersAndSort();
+      showToast(
+        state.openOnly ? "只显示此刻正在营业的食肆" : "已显示全部食肆（含已打烊）",
+        "🕰️"
+      );
+    });
+
+    repeatToggle.addEventListener("change", (e) => {
+      state.avoidRepeat = e.target.checked;
+      savePrefs({ avoidRepeat: state.avoidRepeat });
+      const n = loadRecentWins().length;
+      showToast(
+        state.avoidRepeat
+          ? (n > 0 ? `抽签会避开近七天的 ${n} 家` : "已开启：抽中后七天内不再抽到它")
+          : "抽签不再排除近七天的结果",
+        "🎲"
+      );
     });
 
     // Random pick button (main bottom of list)
@@ -2698,10 +2888,38 @@
       }
     });
 
+    // 还原上次的地址与筛选（首次打开则用默认值）
+    function restorePrefs() {
+      const prefs = loadPrefs();
+
+      if (prefs.radius && radiusSelect.querySelector(`option[value="${prefs.radius}"]`)) {
+        radiusSelect.value = String(prefs.radius);
+      }
+      if (typeof prefs.cuisine === "string" && cuisineFilter.querySelector(`option[value="${prefs.cuisine}"]`)) {
+        cuisineFilter.value = prefs.cuisine;
+        state.cuisineFilter = prefs.cuisine;
+      }
+      if (typeof prefs.sort === "string" && sortSelect.querySelector(`option[value="${prefs.sort}"]`)) {
+        sortSelect.value = prefs.sort;
+        state.sortBy = prefs.sort;
+      }
+      if (typeof prefs.address === "string" && prefs.address.trim()) {
+        state.currentAddress = prefs.address.trim();
+      }
+
+      state.openOnly = prefs.openOnly === true;
+      state.avoidRepeat = prefs.avoidRepeat === true;
+      openOnlyToggle.checked = state.openOnly;
+      repeatToggle.checked = state.avoidRepeat;
+
+      if (radiusLabel) radiusLabel.textContent = `· ${formatRadius(getCurrentRadius())} 圈`;
+    }
+
     // Boot initialize on load
     window.addEventListener("DOMContentLoaded", () => {
+      restorePrefs();
       initAddressAutocomplete();
-      performSearch("成都春熙路IFS商圈");
+      performSearch(state.currentAddress);
     });
 
     // ==========================================
