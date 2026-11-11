@@ -581,6 +581,19 @@
           <input type="checkbox" id="repeatToggle" class="w-3 h-3 accent-[#9e2a2b] cursor-pointer">
           <span>避开近七天吃过的</span>
         </label>
+        <span class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-white border border-[#c7baa7] text-[#4d4036] hover:border-[#9e2a2b] transition">
+          <span>人均上限</span>
+          <select id="budgetSelect" aria-label="人均预算上限"
+                  class="bg-transparent text-xs font-semibold text-[#9e2a2b] outline-none cursor-pointer pr-0.5">
+            <option value="0">不限</option>
+            <option value="30">¥30 内</option>
+            <option value="50">¥50 内</option>
+            <option value="80">¥80 内</option>
+            <option value="120">¥120 内</option>
+            <option value="200">¥200 内</option>
+          </select>
+        </span>
+        <span id="budgetHint" class="text-[10px] text-[#8a7b6b] hidden"></span>
         <span class="text-[10px] text-[#a2937f] ml-auto">设置只存在这台设备</span>
       </div>
     </section>
@@ -901,14 +914,46 @@
       </div>
 
       <div class="mt-3 flex items-center justify-between text-xs text-[#7a6b5b]">
-        <button id="modalCopyAddrBtn" class="hover:text-[#9e2a2b] underline flex items-center gap-1">
-          <span>📋</span> 复制详细地址
-        </button>
+        <div class="flex items-center gap-3">
+          <button id="modalCopyAddrBtn" class="hover:text-[#9e2a2b] underline flex items-center gap-1">
+            <span>📋</span> 复制详细地址
+          </button>
+          <button id="modalShareBtn" class="hover:text-[#9e2a2b] underline flex items-center gap-1 font-semibold text-[#851e1f]">
+            <span>🎋</span> 分享这一签
+          </button>
+        </div>
         <button id="modalCloseBtn" class="hover:text-[#9e2a2b] text-sm px-2 py-1">
           ✕ 关闭窗口
         </button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- 分享这一签：把结果画成一张竖版签文图，可保存 / 复制 / 系统分享 -->
+  <div id="shareModal" class="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-[#fefcf8] border-2 border-[#c59b27] rounded-2xl w-full max-w-sm sm:max-w-md p-4 shadow-2xl flex flex-col max-h-[92vh]">
+      <div class="flex items-center justify-between pb-2">
+        <h4 class="font-calligraphy text-lg text-[#851e1f] tracking-wide">这一签 · 分享出去</h4>
+        <button id="shareCloseBtn" aria-label="关闭分享" class="text-[#7a6b5b] hover:text-[#9e2a2b] text-base px-2 py-1">✕</button>
+      </div>
+      <div id="sharePreviewWrap" class="flex-1 overflow-y-auto">
+        <img id="sharePreview" alt="今日天选签文" class="w-full rounded-lg border border-[#e0d6c2] shadow-sm bg-[#fdfbf7]">
+        <p class="text-[11px] text-[#9c8e7e] text-center mt-2 leading-relaxed">
+          手机端（尤其微信内）请长按图片保存到相册
+        </p>
+      </div>
+      <div class="grid grid-cols-2 gap-2 pt-3">
+        <button id="shareSaveBtn" class="py-2.5 bg-[#9e2a2b] hover:bg-[#851e1f] text-white text-xs font-bold rounded-lg shadow transition flex items-center justify-center gap-1.5">
+          <span>⬇️</span><span>保存图片</span>
+        </button>
+        <button id="shareCopyBtn" class="py-2.5 bg-[#e8dfce] hover:bg-[#ddd1be] text-[#4d4034] text-xs font-bold rounded-lg border border-[#c2b59f] transition flex items-center justify-center gap-1.5">
+          <span>📋</span><span>复制签文</span>
+        </button>
+        <button id="shareNativeBtn" class="hidden col-span-2 py-2.5 bg-white hover:bg-[#f5ecda] text-[#4d4036] text-xs font-bold rounded-lg border border-[#c7baa7] transition flex items-center justify-center gap-1.5">
+          <span>📤</span><span>用其他应用分享</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -1486,7 +1531,8 @@
       isRolling: false,
       openOnly: false,      // 只看此刻营业中的食肆
       avoidRepeat: false,   // 抽签避开近七天中签过的店
-      emptyReason: "cuisine" // "cuisine" | "open"：空列表是因菜系还是因营业状态
+      budgetLimit: 0,       // 人均上限（元），0 = 不限
+      emptyReason: "cuisine" // "cuisine" | "open" | "budget"：空列表的成因
     };
 
     // DOM Elements
@@ -1513,6 +1559,8 @@
     const sortSelect = document.getElementById("sortSelect");
     const openOnlyToggle = document.getElementById("openOnlyToggle");
     const repeatToggle = document.getElementById("repeatToggle");
+    const budgetSelect = document.getElementById("budgetSelect");
+    const budgetHint = document.getElementById("budgetHint");
 
     const loadingState = document.getElementById("loadingState");
     const emptyState = document.getElementById("emptyState");
@@ -1548,6 +1596,14 @@
     const modalRerollBtn = document.getElementById("modalRerollBtn");
     const modalCopyAddrBtn = document.getElementById("modalCopyAddrBtn");
     const modalCloseBtn = document.getElementById("modalCloseBtn");
+
+    const modalShareBtn = document.getElementById("modalShareBtn");
+    const shareModal = document.getElementById("shareModal");
+    const sharePreview = document.getElementById("sharePreview");
+    const shareCloseBtn = document.getElementById("shareCloseBtn");
+    const shareSaveBtn = document.getElementById("shareSaveBtn");
+    const shareCopyBtn = document.getElementById("shareCopyBtn");
+    const shareNativeBtn = document.getElementById("shareNativeBtn");
 
     const toast = document.getElementById("toast");
     const toastIcon = document.getElementById("toastIcon");
@@ -1651,6 +1707,21 @@
     //     高德 opentime2 形如「周一至周五 07:00-18:00；周六至周日 09:00-20:00」
     //     返回 true / false / null（解析不出来时返回 null，调用方一律放行）
     // ==========================================
+    // ==========================================
+    // 5d. 人均价格解析
+    //     数据里形如 "¥68/人"，也可能为空 / "人均未知"
+    //     解析不出来返回 null → 调用方放行，不因缺数据藏店
+    // ==========================================
+    function parsePriceYuan(priceText) {
+      const m = String(priceText || "").match(/(\d+(?:\.\d+)?)/);
+      if (!m) return null;
+      const n = parseFloat(m[1]);
+      return isFinite(n) && n > 0 ? Math.round(n) : null;
+    }
+    function formatYuan(n) {
+      return "¥" + n;
+    }
+
     const DAY_MAP = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "日": 0, "天": 0 };
 
     function isOpenAt(hoursText, now) {
@@ -1722,7 +1793,23 @@
       if (state.openOnly) {
         list = list.filter(item => isOpenAt(item.hours) !== false);
       }
-      state.emptyReason = (list.length === 0 && afterCuisine > 0 && state.openOnly) ? "open" : "cuisine";
+      const afterOpen = list.length;
+
+      // 人均上限：价格缺失（未知）的店保留，宁可多给一家也不凭空藏店
+      if (state.budgetLimit > 0) {
+        list = list.filter(item => {
+          const p = parsePriceYuan(item.price);
+          return p === null || p <= state.budgetLimit;
+        });
+      }
+
+      if (list.length === 0) {
+        if (afterCuisine === 0) state.emptyReason = "cuisine";
+        else if (afterOpen > 0) state.emptyReason = "budget";
+        else state.emptyReason = "open";
+      } else {
+        state.emptyReason = "cuisine";
+      }
 
       // Sort
       if (state.sortBy === "distance") {
@@ -1743,15 +1830,34 @@
       restaurantCountBadge.textContent = state.filteredRestaurants.length;
       randomPoolCount.textContent = state.filteredRestaurants.length;
 
+      // 预算提示：把「人均未知」也保留这件事说清楚，别让用户以为漏了店
+      if (state.budgetLimit > 0) {
+        const total = state.filteredRestaurants.length;
+        const unknown = state.filteredRestaurants.filter(r => parsePriceYuan(r.price) === null).length;
+        budgetHint.textContent = unknown > 0
+          ? `${formatYuan(state.budgetLimit)} 内 · ${total} 家（另含 ${unknown} 家人均未知）`
+          : `${formatYuan(state.budgetLimit)} 内 · ${total} 家`;
+        budgetHint.classList.remove("hidden");
+      } else {
+        budgetHint.classList.add("hidden");
+      }
+
       if (state.filteredRestaurants.length === 0) {
         const byOpen = state.emptyReason === "open";
+        const byBudget = state.emptyReason === "budget";
         restaurantGrid.innerHTML = `
           <div class="col-span-full py-12 text-center text-[#7a6b5a] bg-[#f8f5eb] rounded-lg border border-[#e0d6c2]">
-            <div class="text-3xl mb-2">${byOpen ? "🌙" : "🥢"}</div>
-            <p class="font-bold">${byOpen ? "这个时段附近没有正在营业的食肆" : "该筛选条件下未寻得食肆"}</p>
+            <div class="text-3xl mb-2">${byOpen ? "🌙" : byBudget ? "🧮" : "🥢"}</div>
+            <p class="font-bold">${byOpen
+              ? "这个时段附近没有正在营业的食肆"
+              : byBudget
+                ? `人均 ${formatYuan(state.budgetLimit)} 以内暂无合价食肆`
+                : "该筛选条件下未寻得食肆"}</p>
             <p class="text-xs text-[#9c8e7e] mt-1">${byOpen
               ? "可以关掉「只看此刻营业中」，或换个菜系、放宽半径再看看"
-              : "请尝试切换为「所有菜系分类」或放宽搜索半径"}</p>
+              : byBudget
+                ? "把「人均上限」放宽一档，或换个菜系再看；不设上限则显示全部"
+                : "请尝试切换为「所有菜系分类」或放宽搜索半径"}</p>
           </div>
         `;
         return;
@@ -2440,6 +2546,316 @@
 
 
     // ==========================================
+    // 6b. 分享这一签
+    //     纯前端 canvas 画一张竖版签文图：不联网、不上传、不存服务器
+    // ==========================================
+    const SHARE_FONT_SERIF = '"Songti SC","STSong","SimSun","Noto Serif SC",serif';
+    const SHARE_FONT_KAI = '"STKaiti","KaiTi","Kaiti SC",serif';
+    const shareCache = { dataUrl: "", blob: null, text: "", fileName: "zhiwei-today.png" };
+
+    function getShareUrl() {
+      try {
+        if (location.protocol === "http:" || location.protocol === "https:") {
+          return location.origin + location.pathname;
+        }
+      } catch (e) { /* file:// 打开时不带链接 */ }
+      return "";
+    }
+
+    function buildShareText(win) {
+      const meta = [win.cuisine];
+      if (win.rating > 0) meta.push(`★${win.rating.toFixed(1)}`);
+      const p = parsePriceYuan(win.price);
+      meta.push(p !== null ? `人均 ¥${p}` : "人均未知");
+
+      const lines = [`🎋 今日天选：${win.name}`, meta.filter(Boolean).join(" · ")];
+      if (win.signature) lines.push(`🔥 招牌：${win.signature}`);
+      lines.push(`📍 ${win.address}`);
+      if (win.distance) lines.push(`🚶 距中心 ${win.distance} 米`);
+      const url = getShareUrl();
+      if (url) lines.push(`—— 知味 · 等会吃什么 ${url}`);
+      return lines.join("\n");
+    }
+
+    // 按字符断行，数字/英文/符号不拆开
+    function wrapCanvasText(ctx, text, maxWidth) {
+      const tokens = String(text || "").match(/[A-Za-z0-9¥@._+\-%/]+|\s+|[\s\S]/g) || [];
+      const lines = [];
+      let cur = "";
+      for (const t of tokens) {
+        if (t === "\n") { lines.push(cur.trim()); cur = ""; continue; }
+        const next = cur + t;
+        if (ctx.measureText(next).width > maxWidth && cur.trim()) {
+          lines.push(cur.trim());
+          cur = (t.trim() === "" ? "" : t);
+        } else {
+          cur = next;
+        }
+      }
+      if (cur.trim()) lines.push(cur.trim());
+      return lines.length ? lines : [""];
+    }
+
+    // 店名排版：优先不出现「孤字尾行」；实在放不下才缩到 31px 并截断
+    function fitCanvasTitle(ctx, name, maxW) {
+      for (const s of [58, 52, 46, 40, 35, 31]) {
+        ctx.font = `700 ${s}px ${SHARE_FONT_SERIF}`;
+        const lines = wrapCanvasText(ctx, name, maxW);
+        if (lines.length > 2) continue;
+        if (lines.length === 1) return { size: s, lines };
+        const lastW = ctx.measureText(lines[lines.length - 1]).width;
+        const firstW = ctx.measureText(lines[0]).width;
+        if (lastW >= Math.min(firstW, maxW) * 0.45) return { size: s, lines };
+      }
+      ctx.font = `700 31px ${SHARE_FONT_SERIF}`;
+      const lines = wrapCanvasText(ctx, name, maxW).slice(0, 2);
+      if (lines.length === 2) lines[1] = lines[1].replace(/.$/, "") + "…";
+      return { size: 31, lines };
+    }
+
+    function drawShareCard(win) {      const W = 750, H = 1000;
+      const cv = document.createElement("canvas");
+      cv.width = W;
+      cv.height = H;
+      const ctx = cv.getContext("2d");
+
+      // ---- 1. 宣纸底 + 细纹 + 四周墨晕 ----
+      ctx.fillStyle = "#FDFBF7";
+      ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 380; i++) {
+        const a = (Math.random() * 0.03 + 0.006).toFixed(3);
+        ctx.fillStyle = `rgba(120,96,64,${a})`;
+        ctx.fillRect(Math.random() * W, Math.random() * H, 1.5, 1.5);
+      }
+      // 四角淡墨（只熏角落，中间留白；整幅渐变会让 PNG 体积暴涨）
+      [[0, 0], [W, 0], [0, H], [W, H]].forEach(([cx, cy]) => {
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 300);
+        g.addColorStop(0, "rgba(150,120,80,0.13)");
+        g.addColorStop(1, "rgba(150,120,80,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+      });
+
+      // ---- 2. 双线朱砂外框 + 四角印钉 ----
+      ctx.strokeStyle = "#9E2A2B";
+      ctx.lineWidth = 7;
+      ctx.strokeRect(28, 28, W - 56, H - 56);
+      ctx.strokeStyle = "rgba(158,42,43,0.42)";
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(45, 45, W - 90, H - 90);
+      ctx.fillStyle = "#9E2A2B";
+      [[45, 45], [W - 53, 45], [45, H - 53], [W - 53, H - 53]].forEach(([x, y]) => ctx.fillRect(x, y, 8, 8));
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+
+      // ---- 3. 题头 ----
+      ctx.fillStyle = "#851E1F";
+      ctx.font = `500 26px ${SHARE_FONT_SERIF}`;
+      ctx.fillText("知 味 · 等 会 吃 什 么", W / 2, 116);
+      ctx.fillStyle = "rgba(158,42,43,0.32)";
+      ctx.fillRect(W / 2 - 150, 138, 300, 1.4);
+      ctx.fillStyle = "#A2937F";
+      ctx.font = `400 17px ${SHARE_FONT_SERIF}`;
+      ctx.fillText("方 圆 五 百 米 · 今 日 一 签", W / 2, 168);
+
+      // ---- 4. 「天选」朱印 ----
+      ctx.save();
+      ctx.translate(W / 2, 250);
+      ctx.rotate(-0.045);
+      ctx.fillStyle = "#9E2A2B";
+      ctx.fillRect(-46, -46, 92, 92);
+      ctx.strokeStyle = "rgba(253,251,247,0.85)";
+      ctx.lineWidth = 2.4;
+      ctx.strokeRect(-34, -34, 68, 68);
+      ctx.fillStyle = "#FDFBF7";
+      ctx.font = `600 38px ${SHARE_FONT_KAI}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("天", 0, -21);
+      ctx.fillText("选", 0, 22);
+      ctx.restore();
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+
+      // ---- 5. 先量好各文字块，再统一做垂直居中 ----
+      // 留 105px 边距：不同系统字体回退后度量会有几像素差，留够余量才不会贴边
+      const maxTextW = W - 210;
+
+      const fit = fitCanvasTitle(ctx, win.name, maxTextW);
+      const titleSize = fit.size;
+      const titleLines = fit.lines;
+      const titleGap = titleSize + 16;
+      const titleH = titleLines.length === 1 ? titleSize : (titleLines.length - 1) * titleGap + titleSize;
+
+      // 招牌 / 地址：先量行数，用于算总高度
+      let sigLines = [];
+      if (win.signature) {
+        const sigText = String(win.signature).replace(/^招牌[:：·\s]*/, "");
+        ctx.font = `400 23px ${SHARE_FONT_SERIF}`;
+        sigLines = wrapCanvasText(ctx, `必点 · ${sigText}`, W - 200).slice(0, 2);
+      }
+      ctx.font = `400 19px ${SHARE_FONT_SERIF}`;
+      const addrLines = wrapCanvasText(ctx, win.address, W - 230).slice(0, 3);
+
+      // 可用区：印章下沿 300 → 页脚上沿 H-176，内容在中间垂直居中
+      const META_H = 54, RULE_H = 46;
+      const sigH = sigLines.length ? sigLines.length * 33 + 14 : 0;
+      const addrH = addrLines.length * 28;
+      const totalH = titleH + META_H + RULE_H + sigH + addrH;
+      const startY = 300 + Math.max(0, (H - 176 - 300 - totalH) / 2);
+      const titleTop = startY + titleSize;
+
+      ctx.fillStyle = "#2E2621";
+      ctx.font = `700 ${titleSize}px ${SHARE_FONT_SERIF}`;
+      titleLines.forEach((line, i) => ctx.fillText(line, W / 2, titleTop + i * titleGap));
+      let cursorY = titleTop + (titleLines.length - 1) * titleGap + 54;
+
+      // ---- 6. 菜系 · 评分 · 人均 ----
+      const meta = [win.cuisine];
+      if (win.rating > 0) meta.push(`★ ${win.rating.toFixed(1)}`);
+      const priceNum = parsePriceYuan(win.price);
+      meta.push(priceNum !== null ? `人均 ¥${priceNum}` : "人均未知");
+      const metaText = meta.filter(Boolean).join("  ·  ");
+
+      let metaSize = 25;
+      ctx.font = `400 ${metaSize}px ${SHARE_FONT_SERIF}`;
+      while (ctx.measureText(metaText).width > W - 170 && metaSize > 17) {
+        metaSize -= 1;
+        ctx.font = `400 ${metaSize}px ${SHARE_FONT_SERIF}`;
+      }
+      ctx.fillStyle = "#7A6B5A";
+      ctx.fillText(metaText, W / 2, cursorY + 4);
+      cursorY += 46;
+
+      // 分隔小饰
+      ctx.fillStyle = "rgba(158,42,43,0.28)";
+      ctx.fillRect(W / 2 - 62, cursorY + 4, 124, 1.2);
+      ctx.fillStyle = "#C59B27";
+      ctx.fillRect(W / 2 - 3, cursorY, 6, 6);
+      cursorY += 42;
+
+      // ---- 7. 招牌 ----
+      if (sigLines.length) {
+        ctx.font = `400 23px ${SHARE_FONT_SERIF}`;
+        ctx.fillStyle = "#2E6B65";
+        sigLines.forEach((line, i) => ctx.fillText(line, W / 2, cursorY + i * 33));
+        cursorY += sigLines.length * 33 + 14;
+      }
+
+      // ---- 8. 地址 ----
+      ctx.font = `400 19px ${SHARE_FONT_SERIF}`;
+      ctx.fillStyle = "#8A7B6B";
+      addrLines.forEach((line, i) => ctx.fillText(line, W / 2, cursorY + i * 28));
+
+      // ---- 9. 页脚 ----
+      const footY = H - 128;
+      ctx.fillStyle = "rgba(158,42,43,0.28)";
+      ctx.fillRect(W / 2 - 90, footY - 44, 180, 1.2);
+      ctx.fillStyle = "#A2937F";
+      ctx.font = `400 17px ${SHARE_FONT_SERIF}`;
+      ctx.fillText("摇一签，解今日之难", W / 2, footY - 12);
+
+      const shareUrl = getShareUrl();
+      if (shareUrl) {
+        const prettyUrl = shareUrl
+          .replace(/^https?:\/\//, "")
+          .replace(/\/index\.html$/, "/")
+          .replace(/\/what_to_eat\.html$/, "/")
+          .replace(/\/$/, "");
+        ctx.fillStyle = "#B5A694";
+        ctx.font = `400 15px ui-monospace,Menlo,monospace`;
+        ctx.fillText(prettyUrl, W / 2, footY + 14);
+      }
+
+      const now = new Date();
+      ctx.fillStyle = "#B5A694";
+      ctx.font = `400 15px ${SHARE_FONT_SERIF}`;
+      ctx.fillText(
+        `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`,
+        W / 2, footY + 42
+      );
+
+      // 左下小印「味」
+      ctx.save();
+      ctx.translate(98, H - 100);
+      ctx.rotate(-0.05);
+      ctx.strokeStyle = "#BA2626";
+      ctx.lineWidth = 2.6;
+      ctx.strokeRect(-24, -24, 48, 48);
+      ctx.fillStyle = "#BA2626";
+      ctx.font = `600 30px ${SHARE_FONT_KAI}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("味", 1, 2);
+      ctx.restore();
+
+      return cv;
+    }
+
+    function openSharePanel() {
+      const win = state.selectedRestaurant;
+      if (!win) {
+        showToast("先摇一签，才有得分享", "🎋");
+        return;
+      }
+
+      const cv = drawShareCard(win);
+      shareCache.text = buildShareText(win);
+      shareCache.dataUrl = cv.toDataURL("image/png");
+      shareCache.blob = null;
+      shareCache.fileName = `zhiwei-${String(win.name).replace(/[\\/:*?"<>|\s]+/g, "-").slice(0, 24)}.png`;
+      sharePreview.src = shareCache.dataUrl;
+
+      // 有 Web Share（且能分享文件）才显示系统分享按钮
+      shareNativeBtn.classList.toggle("hidden", !(navigator.canShare && window.File));
+      if (cv.toBlob) {
+        cv.toBlob((blob) => {
+          if (!blob) return;
+          shareCache.blob = blob;
+          try {
+            const file = new File([blob], shareCache.fileName, { type: "image/png" });
+            shareNativeBtn.classList.toggle("hidden", !navigator.canShare({ files: [file] }));
+          } catch (e) { /* 不支持 File 构造就保持隐藏 */ }
+        }, "image/png");
+      }
+
+      shareModal.classList.remove("hidden");
+    }
+
+    function closeSharePanel() {
+      shareModal.classList.add("hidden");
+    }
+
+    function copyPlainText(text) {
+      return new Promise((resolve) => {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => resolve(true)).catch(() => resolve(fallbackCopy(text)));
+            return;
+          }
+        } catch (e) { /* 落到 fallback */ }
+        resolve(fallbackCopy(text));
+      });
+    }
+    function fallbackCopy(text) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.top = "-1000px";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.remove();
+        return ok;
+      } catch (e) { return false; }
+    }
+
+
+    // ==========================================
     // 7. CONFETTI CELEBRATION (PURE CANVAS)
     // ==========================================
     function triggerConfetti() {
@@ -2748,6 +3164,24 @@
       );
     });
 
+    // 人均上限（只存本地）
+    budgetSelect.addEventListener("change", (e) => {
+      state.budgetLimit = parseInt(e.target.value, 10) || 0;
+      savePrefs({ budget: state.budgetLimit });
+      applyFiltersAndSort();
+      if (state.budgetLimit > 0) {
+        const unknown = state.filteredRestaurants.filter(r => parsePriceYuan(r.price) === null).length;
+        showToast(
+          unknown > 0
+            ? `只看人均 ${formatYuan(state.budgetLimit)} 内，另有 ${unknown} 家人均未知也留在池里`
+            : `只看人均 ${formatYuan(state.budgetLimit)} 内的食肆`,
+          "🧮"
+        );
+      } else {
+        showToast("已取消人均上限，全部食肆入池", "🧮");
+      }
+    });
+
     // Random pick button (main bottom of list)
     randomPickBtn.addEventListener("click", () => {
       triggerRandomSelection();
@@ -2820,6 +3254,73 @@
         document.body.removeChild(input);
       }
       showToast("详细地址已复制至剪贴板", "📋");
+    });
+
+    // ===== 分享这一签 =====
+    modalShareBtn.addEventListener("click", () => {
+      openSharePanel();
+    });
+
+    shareCloseBtn.addEventListener("click", () => {
+      closeSharePanel();
+    });
+
+    // 点背景关闭（点卡片内部不关）
+    shareModal.addEventListener("click", (e) => {
+      if (e.target === shareModal) closeSharePanel();
+    });
+
+    shareSaveBtn.addEventListener("click", () => {
+      if (!shareCache.dataUrl) return;
+      try {
+        const a = document.createElement("a");
+        a.href = shareCache.dataUrl;
+        a.download = shareCache.fileName || "zhiwei-today.png";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast("签文图已下载；手机端可长按图片保存", "⬇️");
+      } catch (e) {
+        showToast("这台设备不支持直接下载，请长按图片保存", "📱");
+      }
+    });
+
+    shareCopyBtn.addEventListener("click", () => {
+      copyPlainText(shareCache.text).then((ok) => {
+        showToast(ok ? "签文已复制，去粘贴给同行的人" : "复制失败，可长按图片保存", ok ? "📋" : "⚠️");
+      });
+    });
+
+    shareNativeBtn.addEventListener("click", async () => {
+      const text = shareCache.text;
+      try {
+        if (shareCache.blob) {
+          const file = new File([shareCache.blob], shareCache.fileName || "zhiwei-today.png", { type: "image/png" });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], text: text });
+            return;
+          }
+        }
+        if (navigator.share) {
+          await navigator.share({ title: "今日天选", text: text });
+        } else {
+          const ok = await copyPlainText(text);
+          showToast(ok ? "已复制签文，去粘贴分享吧" : "这台设备暂不支持分享", ok ? "📋" : "⚠️");
+        }
+      } catch (e) {
+        // 用户取消分享不算错误，静默即可
+        if (e && e.name !== "AbortError") {
+          const ok = await copyPlainText(text);
+          showToast(ok ? "已复制签文，去粘贴分享吧" : "分享未完成", ok ? "📋" : "⚠️");
+        }
+      }
+    });
+
+    // Esc 关闭分享面板
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !shareModal.classList.contains("hidden")) {
+        closeSharePanel();
+      }
     });
 
     // 格式化时间 mm:ss
@@ -2911,6 +3412,13 @@
       state.avoidRepeat = prefs.avoidRepeat === true;
       openOnlyToggle.checked = state.openOnly;
       repeatToggle.checked = state.avoidRepeat;
+
+      if (typeof prefs.budget === "number" && prefs.budget > 0) {
+        state.budgetLimit = prefs.budget;
+        if (budgetSelect.querySelector(`option[value="${prefs.budget}"]`)) {
+          budgetSelect.value = String(prefs.budget);
+        }
+      }
 
       if (radiusLabel) radiusLabel.textContent = `· ${formatRadius(getCurrentRadius())} 圈`;
     }
