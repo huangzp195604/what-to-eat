@@ -262,9 +262,9 @@
     </div>
     <div class="flex items-center gap-3">
       <span class="text-[#7c6f5e] hidden sm:inline">|</span>
-      <label class="hidden sm:inline text-[#a89b88] flex items-center gap-1 cursor-pointer">
-        半径:
-        <select id="radiusSelect" class="bg-[#3d3430] text-[#d4af37] text-xs font-bold px-1.5 py-0.5 rounded border border-[#c59b27] outline-none cursor-pointer hover:bg-[#4a3f38]">
+      <label class="text-[#a89b88] flex items-center gap-1 cursor-pointer shrink-0" title="搜索半径">
+        <span class="hidden sm:inline">半径:</span>
+        <select id="radiusSelect" aria-label="搜索半径" class="bg-[#3d3430] text-[#d4af37] text-xs font-bold px-1.5 py-0.5 rounded border border-[#c59b27] outline-none cursor-pointer hover:bg-[#4a3f38]">
           <option value="500">500m</option>
           <option value="1000">1km</option>
           <option value="2000">2km</option>
@@ -417,7 +417,7 @@
         等会吃什么？
       </h1>
       <p class="text-sm sm:text-base text-[#5c4f42] max-w-xl mx-auto leading-relaxed">
-        输入任意地址，探寻方圆 <span class="font-bold text-[#851e1f] border-b border-[#851e1f]">500米</span> 内全部食肆。<br class="hidden sm:inline">
+        输入任意地址，探寻方圆 <span class="font-bold text-[#851e1f] border-b border-[#851e1f]" data-radius-cn>500米</span> 内全部食肆。<br class="hidden sm:inline">
         优柔难断之时，掷签一摇，且听天意！
       </p>
     </div>
@@ -438,7 +438,7 @@
         <label for="addressInput" class="text-sm font-bold text-[#443831] flex items-center justify-between">
           <span class="flex items-center gap-1.5">
             <span class="text-[#9e2a2b]">📍</span>
-            <span>定位探寻中心（半径 500 米内全量检索）</span>
+            <span>定位探寻中心（半径 <span data-radius-cn>500 米</span> 内全量检索）</span>
           </span>
           <span class="text-xs text-[#8a7b6b] font-normal">支持街道、商圈、小区或城市地标</span>
         </label>
@@ -539,7 +539,7 @@
         <span class="text-xs sm:text-sm text-[#4d4036]">
           中心坐标：<b id="currentCenterLabel" class="text-[#851e1f]">成都春熙路IFS商圈</b>
         </span>
-        <span class="text-xs bg-[#e6ddc9] text-[#5c4e3f] px-2 py-0.5 rounded-full font-mono font-medium">
+        <span id="radiusInfoBadge" class="text-xs bg-[#e6ddc9] text-[#5c4e3f] px-2 py-0.5 rounded-full font-mono font-medium">
           半径 500m · 步程约 1~6 分钟
         </span>
         <span class="text-xs text-[#7a6a57]">
@@ -610,7 +610,7 @@
           信使策马寻味中...
         </h3>
         <p class="text-xs sm:text-sm text-[#736452]">
-          正在以该中心为圆心，细探方圆五百米街巷、弄堂、楼宇内的各色食肆...
+          正在以该中心为圆心，细探方圆 <span data-radius-cn>500 米</span> 街巷、弄堂、楼宇内的各色食肆...
         </p>
         <div class="w-full bg-[#ebd9bd] h-1.5 rounded-full overflow-hidden mt-4">
           <div class="bg-[#9e2a2b] h-full w-2/3 animate-pulse rounded-full"></div>
@@ -626,10 +626,10 @@
       <div class="max-w-md mx-auto space-y-4">
         <div class="text-5xl text-[#b5a794]">🍵</div>
         <h3 class="text-xl font-bold text-[#5c4a3b] font-calligraphy tracking-wider">
-          方圆五百米，暂未寻得食肆烟火
+          方圆 <span data-radius-cn>500 米</span>，暂未寻得食肆烟火
         </h3>
         <p class="text-xs sm:text-sm text-[#7a6a57] leading-relaxed">
-          此地幽静，半径 500 米步程内暂无可采录的餐馆。<br>
+          此地幽静，半径 <span data-radius-cn>500 米</span> 步程内暂无可采录的餐馆。<br>
           不妨换个繁华街巷、地铁站或名胜商圈，亦可点击下方热门名坊速览。
         </p>
         <div class="flex flex-wrap justify-center gap-2 pt-2">
@@ -748,7 +748,7 @@
           </h3>
 
           <p class="text-xs sm:text-sm text-[#574a3d] leading-relaxed">
-            从上方 500 米范围内的 <span id="randomPoolCount" class="font-bold text-[#851e1f]">12</span> 家餐厅中随机摇出一家。<br>
+            从上方 <span data-radius-cn>500 米</span> 范围内的 <span id="randomPoolCount" class="font-bold text-[#851e1f]">12</span> 家餐厅中随机摇出一家。<br>
             若不合心意，随时支持再次点击重新摇取！
           </p>
 
@@ -835,7 +835,7 @@
           今日吃这家！
         </h3>
         <p class="text-xs text-[#8a7a67]">
-          寻访中心 500 米内天命食肆，美味无需再犹疑
+          寻访中心 <span data-radius-cn>500 米</span> 内天命食肆，美味无需再犹疑
         </p>
       </div>
 
@@ -969,7 +969,7 @@
   <!-- Sticky Bottom Quick Randomizer for Mobile Accessibility -->
   <div id="mobileActionBar" class="sm:hidden fixed bottom-3 left-3 right-3 z-40 bg-[#29221f]/95 backdrop-blur-md text-[#f7efe1] p-2.5 rounded-xl border border-[#c59b27] shadow-2xl flex items-center justify-between gap-2">
     <div class="text-xs leading-tight pl-1">
-      <div class="font-bold text-[#f5ebd7] font-calligraphy text-sm">500米食肆速选</div>
+      <div class="font-bold text-[#f5ebd7] font-calligraphy text-sm"><span data-radius-cn>500米</span>食肆速选</div>
       <div class="text-[10px] text-[#b5a694] truncate max-w-[130px]" id="mobileCenterSummary">春熙路商圈</div>
     </div>
     <button id="mobileRandomBtn" class="px-4 py-2 bg-[#ba2626] hover:bg-[#9e2a2b] text-white text-xs font-bold rounded-lg shadow flex items-center gap-1.5 border border-[#e0a838]">
@@ -990,7 +990,7 @@
         知味 · 等会吃什么 · 半径500米餐饮全量雷达与随机决选辅助工具
       </p>
       <div class="text-[11px] text-[#998b7a] pt-1">
-        所有食肆距离均严格计算自所设搜索中心（≤ 500m），支持一键定位、菜系筛选与再次重摇。
+        所有食肆距离均严格计算自所设搜索中心（≤ <span data-radius-short>500m</span>），支持一键定位、菜系筛选与再次重摇。
       </div>
     </div>
   </footer>
@@ -1555,6 +1555,23 @@
       if (m >= 1000) return (m / 1000) + "km";
       return m + "m";
     }
+    // 中文单位，用于正文文案（500米 / 1公里）
+    function radiusCn(m) {
+      return m >= 1000 ? (m / 1000) + "公里" : m + "米";
+    }
+    // 页面里所有提到半径的文案统一同步，改半径后不会再有「500米」残留
+    function syncRadiusTexts() {
+      const m = getCurrentRadius();
+      const cn = radiusCn(m);
+      const short = formatRadius(m);
+
+      const badge = document.getElementById("radiusInfoBadge");
+      if (badge) {
+        badge.textContent = `半径 ${short} · 步程约 1~${Math.max(2, Math.round(m / 75))} 分钟`;
+      }
+      document.querySelectorAll("[data-radius-cn]").forEach(el => { el.textContent = cn; });
+      document.querySelectorAll("[data-radius-short]").forEach(el => { el.textContent = short; });
+    }
     const cuisineFilter = document.getElementById("cuisineFilter");
     const sortSelect = document.getElementById("sortSelect");
     const openOnlyToggle = document.getElementById("openOnlyToggle");
@@ -2042,7 +2059,7 @@
                 <span class="text-[#9c8e7e]">（步行约${walkMin}分钟）</span>
               </span>
               <span class="text-[11px] text-[#2e6b65] font-semibold bg-[#e8f2ef] px-1.5 py-0.2 rounded">
-                ✓ 500m内极速达
+                ✓ ${formatRadius(getCurrentRadius())}内极速达
               </span>
             </div>
           </div>
@@ -2500,7 +2517,7 @@
       modalRating.textContent = winner.rating > 0 ? `★ ${winner.rating.toFixed(1)}` : "暂无评分";
       modalPrice.textContent = winner.price ? `人均 ${winner.price}` : "";
       modalAddress.textContent = winner.address;
-      modalDistance.textContent = `${winner.distance} 米 (步行约 ${Math.max(1, Math.round(winner.distance/75))} 分钟 · 500米圈内)`;
+      modalDistance.textContent = `${winner.distance} 米 (步行约 ${Math.max(1, Math.round(winner.distance/75))} 分钟 · ${formatRadius(getCurrentRadius())}圈内)`;
       modalSignature.textContent = winner.signature || "主厨推荐 · 进店必点";
       modalHours.textContent = winner.hours || "营业时间未知";
 
@@ -2986,6 +3003,7 @@
         const r = getCurrentRadius();
         const rStr = formatRadius(r);
         radiusLabel.textContent = `· ${rStr} 圈`;
+        syncRadiusTexts();
         savePrefs({ radius: r });
         showToast(`📍 搜索半径调整为 ${rStr}`, "🎯");
         if (state.currentAddress && isAmapAvailable()) {
@@ -3441,6 +3459,7 @@
     // Boot initialize on load
     window.addEventListener("DOMContentLoaded", () => {
       restorePrefs();
+      syncRadiusTexts();
       initAddressAutocomplete();
       performSearch(state.currentAddress);
     });
